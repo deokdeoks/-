@@ -8,7 +8,7 @@ import sys
 import os
 from PIL import Image, ImageTk, ImageSequence
 
-GIF_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "piplup.gif")
+DEFAULT_GIF = os.path.join(os.path.dirname(os.path.abspath(__file__)), "piplup1.gif")
 SHOW_MS = 3000  # 표시 시간 (ms)
 
 
@@ -35,7 +35,7 @@ def remove_shadow(root):
         pass
 
 
-def show(percent: float, used: int = 0, max_tokens: int = 200000):
+def show(percent: float, used: int = 0, max_tokens: int = 200000, gif_path: str = DEFAULT_GIF):
     root = tk.Tk()
     root.withdraw()  # 먼저 숨기기
     root.overrideredirect(True)
@@ -45,7 +45,7 @@ def show(percent: float, used: int = 0, max_tokens: int = 200000):
 
     # GIF 로드
     frames, durations = [], []
-    gif = Image.open(GIF_PATH)
+    gif = Image.open(gif_path)
     orig_w, orig_h = gif.size
     new_w, new_h = orig_w // 2, orig_h // 2
     for frame in ImageSequence.Iterator(gif):
@@ -87,4 +87,5 @@ if __name__ == "__main__":
     percent = float(sys.argv[1]) if len(sys.argv) > 1 else 100.0
     used = int(sys.argv[2]) if len(sys.argv) > 2 else 0
     max_tokens = int(sys.argv[3]) if len(sys.argv) > 3 else 200000
-    show(percent, used, max_tokens)
+    gif_path = sys.argv[4] if len(sys.argv) > 4 else DEFAULT_GIF
+    show(percent, used, max_tokens, gif_path)
