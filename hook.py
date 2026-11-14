@@ -37,12 +37,11 @@ def load_state():
     try:
         with open(STATE_FILE) as f:
             d = json.load(f)
-        # 옛날 포맷 호환
         if "session_id" not in d:
-            return {"session_id": "", "shown": []}
+            return {"session_id": "", "resets_at": 0, "shown": []}
         return d
     except Exception:
-        return {"session_id": "", "shown": []}
+        return {"session_id": "", "resets_at": 0, "shown": []}
 
 
 def save_state(state):
@@ -66,7 +65,9 @@ def main():
         with open(RATE_FILE) as f:
             rate_data = json.load(f)
         if rate_data.get("session_id") == data.get("session_id", ""):
-            used_percent = rate_data["rate_limits"]["five_hour"]["used_percentage"]
+            five_hour = rate_data["rate_limits"]["five_hour"]
+            used_percent = five_hour["used_percentage"]
+            resets_at = five_hour.get("resets_at", 0)
             ctx = rate_data.get("context_window", {})
             max_tokens = ctx.get("context_window_size", MAX_TOKENS)
             cur = ctx.get("current_usage", {})
@@ -81,6 +82,7 @@ def main():
         pass
 
     if not rate_ok:
+        resets_at = 0
         # 파일 없으면 transcript 파싱으로 폴백
         transcript_path = data.get("transcript_path", "")
         if transcript_path:
@@ -111,9 +113,9 @@ def main():
     session_id = data.get("session_id", "")
     state = load_state()
 
-    # 새 세션이면 초기화
-    if state["session_id"] != session_id:
-        state = {"session_id": session_id, "shown": []}
+    # 새 세션이거나 rate limit이 리셋됐으면 초기화
+    if state["session_id"] != session_id or (resets_at and state.get("resets_at", 0) != resets_at):
+        state = {"session_id": session_id, "resets_at": resets_at, "shown": []}
 
     bracket, gif_name = get_bracket(used_percent)
 
@@ -124,6 +126,7 @@ def main():
 
     # 처음 진입한 구간이면 표시
     state["shown"].append(bracket)
+    state["resets_at"] = resets_at
     save_state(state)
 
     gif_path = os.path.join(DIR, gif_name)
