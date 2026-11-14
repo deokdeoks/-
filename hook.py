@@ -12,7 +12,6 @@ DIR = os.path.dirname(os.path.abspath(__file__))
 WIDGET = os.path.join(DIR, "widget.py")
 PYTHON = "/opt/homebrew/bin/python3"
 MAX_TOKENS = 200000
-RATE_FILE = "/tmp/piplup_rate.json"
 STATE_FILE = os.path.expanduser("~/.piplup_state.json")
 
 # 구간별 GIF 매핑: (최소 사용량%, gif 파일명)
@@ -59,25 +58,35 @@ def main():
     used_tokens = 0
     max_tokens = MAX_TOKENS
 
-    # statusLine이 캡처한 rate_limits 파일에서 읽기 (같은 세션일 때만 사용)
+    # 세션별 rate_limits 파일에서 읽기
+    session_id = data.get("session_id", "")
+    rate_file = f"/tmp/piplup_rate_{session_id}.json" if session_id else "/tmp/piplup_rate.json"
     rate_ok = False
     try:
-        with open(RATE_FILE) as f:
+        with open(rate_file) as f:
             rate_data = json.load(f)
-        if rate_data.get("session_id") == data.get("session_id", ""):
-            five_hour = rate_data["rate_limits"]["five_hour"]
+        rate_limits = rate_data.get("rate_limits", {})
+        if "five_hour" in rate_limits:
+            five_hour = rate_limits["five_hour"]
             used_percent = five_hour["used_percentage"]
             resets_at = five_hour.get("resets_at", 0)
-            ctx = rate_data.get("context_window", {})
-            max_tokens = ctx.get("context_window_size", MAX_TOKENS)
-            cur = ctx.get("current_usage", {})
-            used_tokens = (
-                cur.get("input_tokens", 0)
-                + cur.get("output_tokens", 0)
-                + cur.get("cache_creation_input_tokens", 0)
-                + cur.get("cache_read_input_tokens", 0)
-            )
-            rate_ok = True
+        elif "seven_day" not in rate_limits:
+            raise KeyError("rate_limits 없음")
+        else:
+            # five_hour 없으면 context_window.used_percentage 폴백
+            ctx_pct = rate_data.get("context_window", {}).get("used_percentage", 0)
+            used_percent = ctx_pct
+            resets_at = 0
+        ctx = rate_data.get("context_window", {})
+        max_tokens = ctx.get("context_window_size", MAX_TOKENS)
+        cur = ctx.get("current_usage", {})
+        used_tokens = (
+            cur.get("input_tokens", 0)
+            + cur.get("output_tokens", 0)
+            + cur.get("cache_creation_input_tokens", 0)
+            + cur.get("cache_read_input_tokens", 0)
+        )
+        rate_ok = True
     except Exception:
         pass
 
@@ -110,7 +119,6 @@ def main():
         used_percent = round((used_tokens / max_tokens) * 100, 1)
 
     # 세션별 구간 추적
-    session_id = data.get("session_id", "")
     state = load_state()
 
     # 새 세션이거나 rate limit이 리셋됐으면 초기화
